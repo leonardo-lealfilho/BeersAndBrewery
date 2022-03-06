@@ -1,0 +1,437 @@
+---
+title: "Beers and Brewery Case Study"
+author: "Leo"
+date: "2/19/2022"
+output: html_document
+---
+
+## The Libraries
+
+#### These are the libraries to be used in this study.
+```{r libraries}
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+library(ggplot2)
+library(usmap)
+library(plotly)
+library(ggthemes)
+library(gridExtra)
+library(class)
+library(caret)
+library(e1071)
+```
+
+
+## The Datasets
+
+#### This study seeks to find insightful and useful information from two data sets.  One of the data sets has features that informs characteristics of the beers such as the level of alcohol in the beer (ABV), level of bitterness (IBU), and the beer style.  The second data set identifies breweries by the name, city and state where they are located.
+
+#### Without farther ado, let's load the data sets!
+
+```{r TheData}
+beers <- read.csv("C:/Users/llealfilho/Desktop/SMU/Spring_2022/MSDS_6306_Doing-Data-Science/Unit 8 and 9 Case Study 1/Beers.csv")
+
+breweries <- read.csv("C:/Users/llealfilho/Desktop/SMU/Spring_2022/MSDS_6306_Doing-Data-Science/Unit 8 and 9 Case Study 1/Breweries.csv")
+```
+
+#### The ABV and IBU of the beers are the features that will drive the study.  Unfortunately there are some rows with missing values in those feature.  Since they are so valuable for the study, I have decided to remove the rows with missing values before moving forward.
+
+```{r removingNAs}
+# Filtering out the NA's from the beers dataset
+beers <- beers %>% filter(!is.na(IBU))
+```
+
+#### The final step before beginning the study will be to merge the data sets.
+
+```{r Merging}
+# Changing the Brew_ID column name to Brewery_id to make the only column in both datasets
+# with the same data have the same column name.
+breweries <- breweries %>% rename(c("Brewery_id" = "Brew_ID", "state" = "State"))
+
+# Removing the space in the beginning of the state column.
+breweries$state <- str_replace_all(breweries$state, " ", "")
+
+# inner joining the datasets into a new dataset by the Brewery_id column
+df <- inner_join(beers, breweries, by = "Brewery_id")
+
+# Changing Name.X and Name.Y to Beer and Brewery
+# Also changing State to state to be used later for graphical purposes
+df <- df %>% rename(c("Beer" = "Name.x", "Brewery" = "Name.y"))
+
+# Removing the spaces in the abbreviations of the states
+df$state <- str_replace_all(df$state, " ", "")
+```
+## Exploratory Data Analysis (EDA)
+
+#### The first question I seek to answer is how many breweries are there in each state?
+```{r BreweriesPerStateBarPlot}
+# Unique breweries in the dataframe
+u <- unique(df$Brewery)
+
+# Getting the breweries and the states from the original brewery dataset
+brewery <- breweries %>% filter(Name %in% u) %>% select(state, Name)
+
+# Creating a total.Brewerie dataframe
+total.breweries <- brewery %>% group_by(state) %>% summarise(Total = n())
+
+# Setting the background color of the plot
+a <- 175/255
+c <- rgb(a, a, a)
+
+# Creating a barplot of quantity of breweries per state
+total.breweries %>% ggplot(aes(y = reorder(state, Total), x = Total)) + 
+  geom_bar(stat = "identity", fill = "lightblue") + 
+  theme_economist() + ggtitle("Quatity of Breweries per State") +
+  theme(plot.background = element_rect(fill = c),
+        text = element_text(color = "white"),
+        panel.grid = element_blank(),
+        plot.title = element_text(size = 25)) +
+  ylab("States\n")
+```
+
+#### The bar plot above shows that California, Oregon and Washington state are amongst the top 6 states with the most breweries in them.  That would mean the west coast have a denser concentration of breweries than the east coast.  The following heatmap can better illustrate that fact.
+
+```{r}
+# Heatmap of breweries by state
+plot_usmap(data = total.breweries, values = "Total", color = "black", labels = TRUE) +
+  scale_fill_continuous(low = "yellow",
+                          high = "red", 
+                          name = "Quantity of Breweries", 
+                          label = scales::comma) + 
+  theme_economist() +
+  theme(plot.background = element_rect(fill = c), 
+        text = element_text(color = "white"),
+        legend.position = "right",
+        panel.grid = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.title = element_text(size = 25)) +
+  ggtitle("Quantity of Brewery by State") + xlab("") + ylab("")
+```
+
+#### The heat map makes it for a better visualization of the geographical count of breweries.  Not only does it show how there is a higher concentration of breweries in the west coast, it also shows that some of the states with the least amount of breweries are in the east coast.
+
+#### The next step will be to examine the level of alcohol prefered in each state.  For this analysis I will assume that the median value of each beer is the best measurement of center.  By getting a good measurement of center, we are getting values that are more likely to happen.  With all of that being said, let's examine the barplot and a heatmap of the median ABV per state.
+
+#### First the barplot
+
+```{r ABVBarPlot}
+# Gathering the medians
+med <- df %>% group_by(state) %>% summarise(MedianABV = median(ABV), MedianIBU = median(IBU))
+
+# Changing State to state in med
+med$state <- str_replace_all(med$state, " ", "")
+
+# Plotting the Median ABV
+med %>% ggplot(aes(y = reorder(state, MedianABV), x = MedianABV)) + 
+  geom_bar(stat = "identity", fill = "lightblue") + 
+  theme_economist() + ggtitle("Median ABV per State") +
+  theme(plot.background = element_rect(fill = c), 
+        text = element_text(color = "white"),
+        panel.grid = element_blank(),
+        plot.title = element_text(size = 25)) +
+  ylab("States\n") +
+  xlab("\nMedian ABV")
+```
+
+#### The bar plot shows how the spread of the median alcohol levels by state is not big.  This would mean that since those levels of alcohol in a beer are popular in each state, the consumers in each state do seem to agree that perhaps one of the reasons people are buying beers is because of the alcohol content.  
+
+#### Does the heat map agree with that assessment?
+
+```{r ABVHeatMap}
+# Creating the ABV Median Heatmap
+plot_usmap(data = med, values = "MedianABV", color = "black", labels = TRUE) +
+  scale_fill_continuous(low = "yellow",
+                          high = "red", 
+                          name = "Median ABV", 
+                          label = scales::comma) + 
+  theme_economist() +
+  theme(plot.background = element_rect(fill = c), 
+        text = element_text(color = "white"),
+        legend.position = "right",
+        panel.grid = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.title = element_text(size = 25)) +
+  ggtitle("Median ABV by State") + xlab("") + ylab("")
+```
+
+#### The ABV heat map does agree with the fact that most states have very similar levels of alcohol in the beers they produce.  The interesting thing to see in the heat map is that even though we have seen earlier that there seems to be more breweries in the west coast than in the east coast, the breweries in the east coast seems to specialize in making beers with a little higher alcohol levels than the west coast.
+
+#### Now it is time to analyze the IBU content of the beers per state.
+
+```{r IBUBarPlot}
+# Plotting the Median IBU
+med %>% ggplot(aes(y = reorder(state, MedianIBU), x = MedianIBU)) + 
+  geom_bar(stat = "identity", fill = "lightblue") + 
+  theme_economist() + ggtitle("Median IBU per State") +
+  theme(plot.background = element_rect(fill = c), 
+        text = element_text(color = "white"),
+        panel.grid = element_blank(),
+        plot.title = element_text(size = 25)) +
+  ylab("States\n") +
+  xlab("\nMedian ABV")
+```
+
+#### Contrary to the ABV, the IBU bar plot shows that there is more of a difference between the median levels of IBU being produced in each state.  Perhaps there is a regional preference for bitterness in the beer.  
+
+#### Here is the heat map!
+
+```{r IBUHeatMap}
+# Creating the IBU Median Heatmap
+plot_usmap(data = med, values = "MedianIBU", color = "black", labels = TRUE) +
+  scale_fill_continuous(low = "yellow",
+                          high = "red", 
+                          name = "Median IBU", 
+                          label = scales::comma) + 
+  theme_economist() +
+  theme(plot.background = element_rect(fill = c), 
+        text = element_text(color = "white"),
+        legend.position = "right",
+        panel.grid = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.title = element_text(size = 25)) +
+  ggtitle("Median IBU by State") + xlab("") + ylab("")
+```
+
+#### Interestingly, the map again shows that the states that favors a more bitter beer are located in the east coast or near it.
+
+#### Next, I will check to see if there is a relationship between ABV and IBU.
+
+```{r ABVvs.IBU}
+# ABV v. IBU scatterplot with a smooth line
+df %>% ggplot(aes(x = IBU, y = ABV)) +
+  geom_point(color = "blue") + 
+  geom_smooth(method = "lm", color = "black") +
+  theme_economist() + 
+  ggtitle("ABV v. IBU") +
+  theme(plot.background = element_rect(fill = c), 
+        text = element_text(color = "white"),
+        panel.grid = element_blank(),
+        plot.title = element_text(size = 25)) +
+  xlab("\nIBU") + ylab("ABV\n")
+```
+
+#### The scatter plot shows a positive correlation.  That is to say the more bitter the beer may be the higher the alcohol level.  Such is the case with Florida, Georgia, West Virginia, and Maine.
+
+#### After observing the bar plots and the heat maps, The conclussion I would make is that though the the west coast has a higher density of breweries, the beers produced in the east coast seems to have higher levels of alcohol and bitterness.  The correlation shows that the ABV and IBU have a positive correlation, and that explains the heat maps and the bar plots.  In the first bar plot and heat map we can see that there are more breweries in the west coast, and they mostly produce beers with comperatively lower levels of ABV and IBU.  The oposite can be seen on the east coast, concluding that the places with least breweries in them tend to produce beers with higher levels of ABV and IBU.
+
+
+## Machine Learning
+
+#### Now I will shift the study to see if machine learning.  The machine learning used will be K Nearest Neighbors.  The intent will be to see if I can build a model that have a good chance of distiguishing an India Pale Ales (IPA) style of beer from other Ale styles.
+
+```{r IPA&OtherAles}
+# Getting the ales from the data set.
+ale <- str_detect(df$Style, regex("Ale"))
+
+# Making a list of the unique ales styles.
+ale.Style <- unique(df[ale,]$Style)
+
+# Removing the IPAs from the list.
+ale.Style <- ale.Style[!str_detect(ale.Style, "IPA")]
+
+# Getting the IPAs from the data set.
+ipa <- str_detect(df$Style, regex("IPA"))
+
+# Making a list of the unique IPA styles.
+ipa.Style <- unique(df[ipa,]$Style)
+
+# Creating the dataframe with the ales.
+ales <- df %>% filter(Style %in% ale.Style | Style %in% ipa.Style) %>%
+  select(ABV, IBU, Style)
+
+# Creating a new feature that separates the IPAs from the other styles of ales.
+ales$Ale <- ifelse(ales$Style %in% ipa.Style, "IPA", "Other")
+```
+
+#### Now that the dataset is ready I will begin the process of building the model.  First, though, a scatter plot should demonstrate a if there is separation between the Ale groups (IPA and Other).
+
+```{r AleScatterPlot}
+# Ales Scatter Plot
+ales %>% ggplot(aes(x = IBU, y = ABV)) + 
+  geom_point(aes(color = Ale)) +
+  theme_economist() + 
+  ggtitle("ABV v. IBU") +
+  theme(plot.background = element_rect(fill = c), 
+        text = element_text(color = "white"),
+        panel.grid = element_blank(),
+        plot.title = element_text(size = 25),
+        legend.title = element_blank()) +
+  xlab("\nIBU") + ylab("ABV\n")
+```
+
+#### The scatter plot shows that there is a quite visible separation between the IPA and the other types of Ales because the IPAs seem to have higher levels of both the ABV and IBU.  With that in mind, let me now build the knn model.
+
+```{r}
+# Building the model doing 1000 different train and test iterations while testing
+# 30 different k dimensions of neighbors
+
+iterations <- 1000
+numks <- 30
+
+masterAcc <- matrix(nrow = iterations, ncol = numks)
+
+for(j in 1:iterations)
+{
+  set.seed(j)
+  trainIndices <- sample(1:dim(ales)[1],round(0.7 * dim(ales)[1]))
+  train <- ales[trainIndices,]
+  test <- ales[-trainIndices,]
+for(i in 1:numks)
+{
+  classifications <- knn(train[,c(1,2)],test[,c(1,2)],train$Ale, prob = TRUE, k = i)
+  CM <- confusionMatrix(table(classifications, factor(test$Ale)))
+  masterAcc[j,i] <- CM$overall[1]
+}
+
+}
+```
+
+#### Now that the model has been built, let's investigate its best accuracy iteration.
+
+```{r}
+Acc <- data.frame(masterAcc)
+MeanAcc <- colMeans(masterAcc)
+m <- which(MeanAcc == max(MeanAcc))
+iter <- which(Acc[,m] == max(Acc[,m]))
+
+set.seed(iter)
+trainIndices <- sample(1:dim(ales)[1],round(0.7 * dim(ales)[1]))
+train <- ales[trainIndices,]
+test <- ales[-trainIndices,]
+
+classifications <- knn(train[,c(1,2)],test[,c(1,2)],train$Ale, prob = TRUE, k = m)
+CM <- confusionMatrix(table(classifications, factor(test$Ale)))
+
+cat("The accuracy of the optimal model is: ", CM$overall[1])
+
+cat("The Sensitivity of the model is: ", CM$byClass[1])
+
+cat("The Specificity of the model is: ", CM$byClass[2])
+```
+
+#### The accuracy looks really good at 92%, with the sensitivity and specificity being 89% and 94% respectively.  This indicates that the model is quite accurate and its ability to classify what is not an IPA into Other is what helps.  In other words, it is able to classify IPA with a nice rate of accuracy without trying to overfit the Ales that are not IPAs.
+
+## Additional Observation
+
+#### Additionally, I decided to study the top styles of beers and what opportunities they may provide.  First I wanted to see how many total styles there is.
+
+```{r}
+# How many styles of beers are there?
+length(unique(beers$Style))
+```
+
+
+#### From the 91 different styles of beers, I will see which styles are the 10 most popular by checking how many different beers there are for each style.  After that, I will plot them comparing it to the other 81 styles in terms of popularity.  Popularity in this case being the amount of beers being produced with each of the styles.
+
+```{r style}
+# Creating dataframe with beer style and how many times they show in the dataset
+style <- df %>% group_by(Style) %>% summarise(Total = n())
+
+# Reordering from most popular to least popular
+style <- style[order(style$Total, decreasing = T),]
+
+# Top 10 Styles
+Top.10.Styles <- head(style, 10)
+
+# The Top 10 Style names only
+Top.10.Styles.Names <- Top.10.Styles$Style
+
+# Sum of the styles outside of the Top 10
+other <- style %>% filter(Style != Top.10.Styles.Names) %>% summarise(Total = sum(Total))
+
+# DataFrame with Top10 and Others
+Style.Count <- data.frame(Style = c("Top 10", "Others"), 
+                          Popularity = c(sum(Top.10.Styles$Total), other$Total))
+
+# Bars colors
+b <- rgb(242/255, 142/255, 28/255)
+
+# Barplot of Top 10 and Others
+Style.Count %>% ggplot(aes(x = Style, y = Popularity, fill = Style)) + 
+  geom_bar(stat = "identity", show.legend = F) +
+  theme_economist() + ggtitle("Style Popularity") +
+  theme(plot.background = element_rect(fill = c), 
+        text = element_text(color = "white"),
+        panel.grid = element_blank(),
+        plot.title = element_text(size = 25)) +
+  ylab("") +
+  xlab("")
+```
+
+#### The top 10 styles of beers are more popular than the remainder 81!  This means there are more beers under the top 10 styles than there are under 81 other styles.  Now it is time to check which of the 10 styles is more popular and their ABV and IBU levels.
+
+```{r}
+# Top 10 as the percentage of the total
+total <- sum(style$Total)
+Top.10.Styles <- Top.10.Styles %>% mutate(Perc_of_Total = round((Total/total) * 100, 2))
+
+# Barplot of Top 10 Styles as the percentage of the total
+Top.10.Styles %>% ggplot(aes(y = reorder(Style, Perc_of_Total), x = Perc_of_Total)) + 
+  geom_bar(stat = "identity", fill = b) +
+  theme_economist() + ggtitle("Most Popular Styles") +
+  theme(plot.background = element_rect(fill = c), 
+        text = element_text(color = "white"),
+        panel.grid = element_blank(),
+        plot.title = element_text(size = 25)) +
+  ylab("Styles\n") +
+  xlab("\nPercentage of Total")
+```
+
+#### Of the top 10 styles the most popular being the American IPA, which has over 20% of the total beers.  The American Pale Ale (APA) has over 10%, which means over one third of the beers produced are either American IPA and American Pale Ale (APA).  If Budweiser is considering getting in the Ale market, The American Pale Ale or the American IPA are two styles that are quite popular in the U.S.
+
+#### Now to check their popularity in each specific state with the heat map.
+
+
+```{r AmericanPaleAleHeatMap}
+df.APA <- df %>% filter(Style == "American Pale Ale (APA)")
+df.IPA <- df %>% filter(Style == "American IPA")
+
+
+APA.Med <- data.frame(df.APA %>% group_by(state) %>% summarise(MedianABV = median(ABV), MedianIBU = median(IBU), Total = n()))
+
+
+plot_usmap(data = APA.Med, values = "Total", color = "black", labels = TRUE) +
+  scale_fill_continuous(low = "yellow",
+                          high = "red", 
+                          name = "Median IBU", 
+                          label = scales::comma) + 
+  theme_economist() +
+  theme(plot.background = element_rect(fill = c), 
+        text = element_text(color = "white"),
+        legend.position = "right",
+        panel.grid = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.title = element_text(size = 25)) +
+  ggtitle("American Pale Ale (APA)") + xlab("") + ylab("")
+```
+
+
+
+```{r AmericanIPAHeatMap}
+IPA.Med <- df.IPA %>% group_by(state) %>% summarise(MedianABV = median(ABV), MedianIBU = median(IBU), Total = n())
+
+
+plot_usmap(data = IPA.Med, values = "Total", color = "black", labels = TRUE) +
+  scale_fill_continuous(low = "yellow",
+                          high = "red", 
+                          name = "Median IBU", 
+                          label = scales::comma) + 
+  theme_economist() +
+  theme(plot.background = element_rect(fill = c), 
+        text = element_text(color = "white"),
+        legend.position = "right",
+        panel.grid = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        plot.title = element_text(size = 25)) +
+  ggtitle("American IPA") + xlab("") + ylab("")
+```
+
+#### Though the American Pale Ale is the most popular style, states like New Mexico, Oklahoma and South Carolina do not seem to have many beers of that style being produced there.  While for the American IPA Nevada and Arkansa seem to be good options to introduce a new product line.
+
+## Thank you for your attention!  It was a great pleasure to work with these data sets, and I look forward to more!  In the mean time I am open to explain any point of confusion, just reach out.
