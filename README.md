@@ -9,7 +9,7 @@
 
 ### The first question I seek to answer is how many breweries are there in each state?
 <p float="left">
-<img src"./Graphs/barplot1.png" height="1000" width="500">
+<img src="./Graphs/barplot1.png" height="1000" width="500">
 </p>
   
 ### The bar plot above shows that California, Oregon and Washington state are amongst the top 6 states with the most breweries in them. That would mean the west coast have a denser concentration of breweries than the east coast. The following heatmap can better illustrate that fact.
